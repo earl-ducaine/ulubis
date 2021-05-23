@@ -3,3 +3,5 @@ ulubis
 ulubis.sdl
 .gdb_history
 *.so
+os-compatibility-test
+a.out
