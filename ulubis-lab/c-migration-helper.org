@@ -1,0 +1,101 @@
+
+
+
+
+
+
+* C Migration Helper
+
+** Introduction
+
+   CFFI is a powerful portability layer that allows access to system
+   resources using C semantics. With it, it is possible to write
+   fluent Common Lisp code using C libraries and accessing OS
+   resources not otherwise available in CL libraries. 
+
+   Using CFFI it is also possible to translate C code into
+   CL as prart of a project of migrating code. However, CFFI doesn't
+   lend itself to trascribing C directly into ideomatic CL code
+   without additional support. This document is organized around two
+   principles to make manual CL transcription of C more ideomatic,
+   less error prone, and faster.
+
+   1) Organizing conventions -- C constructs can be translated in a
+      number of ways, by selecting a consistent set of conventions the
+      process can be improved, with the usual benefits of consistent
+      code of readability and maintainability.
+
+   2) A set of macros, functions and evironment constructs that allow
+      C code to be concisely expressed in Common Lisp
+
+** CL Tools for Transcribing C
+
+   CFFI uses a type system parallel to the the CL system -- access to
+   C system structures is through an untyped SAP (system area
+   pointer). This means that every access to C values requires that
+   type be specified, something tedious and errorprone. To avoid that,
+   we create typed wrapper to the SAP that CFFI manipulates. 
+
+   Two version of the class are provided, one that provides dynamic
+   allocation of the object and the other requires explicitly freeing
+   allocated memory.
+   
+   file: ulubis-lab/simple-touch.lisp
+
+   #+BEGIN_SRC common-lisp
+     (struct tm
+       (sec :int)
+       (min :int)
+       (hour :int)
+       (mday :int)
+       (mon :int)
+       (year :int)
+       (wday :int)
+       (yday :int)
+       (isdst :boolean)
+       (zone
+	:string)
+       (gmtoff :long))
+   #+END_SRC
+
+
+
+** Pointers
+
+   Because C makes very heavy use of pointer operations, these are
+   made as concise as possble.
+
+
+   |-----------------------------------------------+---------------------------------------------------------|
+   | ->                                            | ->                                                      |
+   |                                               |                                                         |
+   | stride = touch->width * 4;                    | (setf stride (-> touch 'width))                         |
+   |                                               |                                                         |
+   | size = stride * touch->height;                | (setf size (* stride (-> touch->height)))               |
+   |                                               |                                                         |
+   | ret = eglInitialize(display->egl.dpy, &major, | (assert (= (eglInitialize (-> (-> display 'egl)         |
+   | &minor);                                      | 'dpy) major-ptr minor-ptr) egl-true)                    |
+   | assert(ret == EGL_TRUE);                      |                                                         |
+   |                                               |                                                         |
+   |-----------------------------------------------+---------------------------------------------------------|
+   | .                                             | Because all SAP objects are referances, there's no need |
+   |                                               | for an operator for l-value (dereferenced) structures.  |
+   |-----------------------------------------------+---------------------------------------------------------|
+   | []                                            | c-aref                                                  |
+   | config_attribs[9] = 0;                        | (setf (c-aref config-attribs 9) 0)                      |
+   |                                               |                                                         |
+   |-----------------------------------------------+---------------------------------------------------------|
+   | * (dereference)                               | deref                                                   |
+   | uint32_t state = *p;                          | (setf state (deref p))                                  |
+   |                                               |                                                         |
+   |-----------------------------------------------+---------------------------------------------------------|
+
+   
+
+** Conventions
+
+   
+*** Memory Allocation
+
+    All memory should be stack allocated, either through dynamic
+    global variables or through lexical scope.

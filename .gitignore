@@ -1,3 +1,5 @@
 *.fasl
 ulubis
 ulubis.sdl
+.gdb_history
+*.so

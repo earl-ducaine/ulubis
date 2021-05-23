@@ -1,0 +1,27 @@
+
+
+
+* ulubis Notes 
+
+
+** Breaking out client protocol stuff
+
+*** Project resources
+**** Relevent lisp files in ~/dev/wayland/ulubis/ulubis/cl-wayland/
+     generate-bindings.lisp
+     wayland-util.lisp
+     wayland-client-core.lisp
+     wayland-server-core.lisp
+     wayland-client-protocol.lisp
+     wayland-server-protocol.lisp
+
+**** Relevant c files
+     ~/dev/wayland/wayland/build/src/wayland-client-protocol-core.h
+     ~/dev/wayland/wayland/build/src/wayland-server-protocol-core.h
+     ~/dev/wayland/wayland/build/src/wayland-client-protocol.h
+     ~/dev/wayland/wayland/build/src/wayland-server-protocol.h
+
+
+*** Remote procedure calls
+
+    - Underlying mechanism: wl-proxy-marshal-constructor
