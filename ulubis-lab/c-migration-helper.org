@@ -33,29 +33,21 @@
    CFFI uses a type system parallel to the the CL system -- access to
    C system structures is through an untyped SAP (system area
    pointer). This means that every access to C values requires that
-   type be specified, something tedious and errorprone. To avoid that,
-   we create typed wrapper to the SAP that CFFI manipulates. 
+   type be specified, something tedious and error prone. To avoid
+   that, we create typed wrapper to the SAP that CFFI manipulates.
 
-   Two version of the class are provided, one that provides dynamic
+   Two versions of the class are provided, one that provides dynamic
    allocation of the object and the other requires explicitly freeing
    allocated memory.
    
    file: ulubis-lab/simple-touch.lisp
 
    #+BEGIN_SRC common-lisp
-     (struct tm
-       (sec :int)
-       (min :int)
-       (hour :int)
-       (mday :int)
-       (mon :int)
-       (year :int)
-       (wday :int)
-       (yday :int)
-       (isdst :boolean)
-       (zone
-	:string)
-       (gmtoff :long))
+     ;; Note, this automatically creates creates accessors for slots
+     (def-c-struct-class window
+       (display :c-type (:pointer (:struct display)))
+       (geometry :c-type (:pointer (:struct geometry)))
+       (frames :c-type :uint32))
    #+END_SRC
 
 

@@ -1,5 +1,6 @@
 
-(in-package :simple-egl)
+(in-package :ulubis-lab)
+
 
 (defun str (&rest rest)
   (apply #'concatenate 'string rest))
@@ -17,6 +18,7 @@
   (ctx eglcontext)
   (conf eglconfig))
 
+(defcstruct window)
 
 ;; struct display {
 ;; 	struct wl_display *display;
@@ -55,7 +57,7 @@
   (default-cursor :pointer)
   (cursor-surface :pointer)
   (egl (:struct egl))
-  (window :pointer)
+  (window (:pointer (:struct window)))
   (swap-buffers-with-damage :pointer))
 
 
@@ -134,11 +136,12 @@
 
 
 (defvar *frag-shader-text*
-  "precision mediump float;\n"
-  "varying vec4 v_color;\n"
-  "void main() {\n"
-  "  gl_FragColor = v_color;\n"
-  "}\n")
+  (str
+   "precision mediump float;\n"
+   "varying vec4 v_color;\n"
+   "void main() {\n"
+   "  gl_FragColor = v_color;\n"
+   "}\n"))
 
 (defparameter *running* 1)
 
@@ -160,22 +163,6 @@
   (extension :string)
   (entrypoint :string))
 
-(defparameter *swap-damage-ext-to-entrypoint*
-  (let* ((type '(:struct swap-damage-ext-to-entrypoint))
-         (swap-damage-ext-to-entrypoint (foreign-alloc type :count 2)))
-    (mapcar
-     (lambda (entrypoint)
-       (let ((ptr (mem-aptr swap-damage-ext-to-entrypoint type
-			    (caddr entrypoint))))
-	 (setf (foreign-slot-value ptr type 'extension)
-	       (car entrypoint))
-	 (setf (foreign-slot-value ptr type 'entrypoint)
-	       (cadr entrypoint))))
-     '(("EGL-EXT-swap-buffers-with-damage"
-	"eglSwapBuffersWithDamageEXT" 0)
-       ("EGL-KHR-swap-buffers-with-damage"
-	"eglSwapBuffersWithDamageKHR" 1)))
-    swap-damage-ext-to-entrypoint))
 
 ;; static void
 ;; init_egl(struct display *display, struct window *window)
@@ -264,103 +251,103 @@
 ;; }
 
 
-(defun (init-egl display-ptr window-ptr)
-  (let (extensions count i size configs-ptr ret
-		   (context-attribs
-		     (foreign-alloc
-		      eglint
-		      :count 3
-		      :initial-contents '(egl-context-client-version 2 egl-none)))
-		   (config-attribs
-		     (foreign-alloc
-		      eglint
-		      :count 13
-		      :initial-contents '(egl-surface-type egl-window-bit
-					  egl-red-size 1 egl-green-size 1
-					  egl-blue-size 1 egl-alpha-size 1
-					  egl-renderable-type egl-opengl-es2-bit
-					  egl-none))))
-    (with-foreign-objects ((major-ptr eglint)
-			   (minor-ptr eglint)
-			   (minor-ptr eglint)
-			   (n eglint)
-			   (configs (:struct eglconfig) :count count))
-      (with-foreign-slots ((opaque buffer-size) window-ptr
-			   (:struct window))
-	(when (or (/= opaque 0) (= buffer-size 16))
-	  (setf (mem-aref config-attribs eglint 9) 0))
-	(assert (/= (setf (foreign-slot-value
-			   (foreign-slot-value display-ptr '(:struct display) 'egl)
-			   '(:struct egl) 'dpy)
-			  (weston-platform-get-egl-display
-			   egl-platform-wayland-khr
-			   (foreign-slot-value display-ptr '(:struct display) 'display)
-			   (null-pointer)))
-		    0))
-	(assert (= (eglinitialize (foreign-slot-value
-				   (foreign-slot-value display-ptr '(:struct display) 'egl)
-				   '(:struct egl) 'dpy) major-ptr minor-ptr)
-		   egl-true))
-	(assert (= (eglbindapi egl-opengl-es-api) egl-true))
-	(assert (and (/= (eglgetconfigs
-			  (foreign-slot-value
-			   (foreign-slot-value display-ptr '(:struct display) 'egl)
-			   '(:struct egl) 'dpy)
-			  (null-pointer) 0 count) 0)
-		     (>= count 1)))
-	(setf configs (foreign-alloc (:struct eglconfig) :count count))
-	(assert (and (/= (eglchooseconfig
-			  (foreign-slot-value
-			   (foreign-slot-value display-ptr
-					       '(:struct display) 'egl)
-			   '(:struct egl) 'dpy)
-			  config-attribs
-			  configs
-			  count) 0)
-		     (>= n 1)))
-	(dotimes (i n)
-	  (eglgetconfigattrib (foreign-slot-value
-			       (foreign-slot-value display-ptr
-						   '(:struct display) 'egl)
-			       '(:struct egl) 'dpy)
-			      (mem-aptr configs eglconfig i)
-			      egl-buffer-size size)
-	  (when (= (foreign-slot-value window-ptr
-				       '(:struct window) 'buffer-size)
-		   size)
-	    (setf (foreign-slot-value
-		   (foreign-slot-value display-ptr
-				       '(:struct display) 'egl)
-		   '(:struct egl) 'conf)
-		  (mem-aptr configs eglconfig i))
-	    (return)))
-	(when (null-pointer-p (foreign-slot-value
-		   (foreign-slot-value display-ptr
-				       '(:struct display) 'egl)
-		   '(:struct egl) 'conf))
-	  (error "did not find config with buffer size ~s~%"
-		 (foreign-slot-value window-ptr
-				     '(:struct window) 'buffer-size)))
+;; (defun (init-egl display-ptr window-ptr)
+;;   (let (extensions count i size configs-ptr ret
+;; 		   (context-attribs
+;; 		     (foreign-alloc
+;; 		      eglint
+;; 		      :count 3
+;; 		      :initial-contents '(egl-context-client-version 2 egl-none)))
+;; 		   (config-attribs
+;; 		     (foreign-alloc
+;; 		      eglint
+;; 		      :count 13
+;; 		      :initial-contents '(egl-surface-type egl-window-bit
+;; 					  egl-red-size 1 egl-green-size 1
+;; 					  egl-blue-size 1 egl-alpha-size 1
+;; 					  egl-renderable-type egl-opengl-es2-bit
+;; 					  egl-none))))
+;;     (with-foreign-objects ((major-ptr eglint)
+;; 			   (minor-ptr eglint)
+;; 			   (minor-ptr eglint)
+;; 			   (n eglint)
+;; 			   (configs (:struct eglconfig) :count count))
+;;       (with-foreign-slots ((opaque buffer-size) window-ptr
+;; 			   (:struct window))
+;; 	(when (or (/= opaque 0) (= buffer-size 16))
+;; 	  (setf (mem-aref config-attribs eglint 9) 0))
+;; 	(assert (/= (setf (foreign-slot-value
+;; 			   (foreign-slot-value display-ptr '(:struct display) 'egl)
+;; 			   '(:struct egl) 'dpy)
+;; 			  (weston-platform-get-egl-display
+;; 			   egl-platform-wayland-khr
+;; 			   (foreign-slot-value display-ptr '(:struct display) 'display)
+;; 			   (null-pointer)))
+;; 		    0))
+;; 	(assert (= (eglinitialize (foreign-slot-value
+;; 				   (foreign-slot-value display-ptr '(:struct display) 'egl)
+;; 				   '(:struct egl) 'dpy) major-ptr minor-ptr)
+;; 		   egl-true))
+;; 	(assert (= (eglbindapi egl-opengl-es-api) egl-true))
+;; 	(assert (and (/= (eglgetconfigs
+;; 			  (foreign-slot-value
+;; 			   (foreign-slot-value display-ptr '(:struct display) 'egl)
+;; 			   '(:struct egl) 'dpy)
+;; 			  (null-pointer) 0 count) 0)
+;; 		     (>= count 1)))
+;; 	(setf configs (foreign-alloc (:struct eglconfig) :count count))
+;; 	(assert (and (/= (eglchooseconfig
+;; 			  (foreign-slot-value
+;; 			   (foreign-slot-value display-ptr
+;; 					       '(:struct display) 'egl)
+;; 			   '(:struct egl) 'dpy)
+;; 			  config-attribs
+;; 			  configs
+;; 			  count) 0)
+;; 		     (>= n 1)))
+;; 	(dotimes (i n)
+;; 	  (eglgetconfigattrib (foreign-slot-value
+;; 			       (foreign-slot-value display-ptr
+;; 						   '(:struct display) 'egl)
+;; 			       '(:struct egl) 'dpy)
+;; 			      (mem-aptr configs eglconfig i)
+;; 			      egl-buffer-size size)
+;; 	  (when (= (foreign-slot-value window-ptr
+;; 				       '(:struct window) 'buffer-size)
+;; 		   size)
+;; 	    (setf (foreign-slot-value
+;; 		   (foreign-slot-value display-ptr
+;; 				       '(:struct display) 'egl)
+;; 		   '(:struct egl) 'conf)
+;; 		  (mem-aptr configs eglconfig i))
+;; 	    (return)))
+;; 	(when (null-pointer-p (foreign-slot-value
+;; 		   (foreign-slot-value display-ptr
+;; 				       '(:struct display) 'egl)
+;; 		   '(:struct egl) 'conf))
+;; 	  (error "did not find config with buffer size ~s~%"
+;; 		 (foreign-slot-value window-ptr
+;; 				     '(:struct window) 'buffer-size)))
 
-	display->egl.ctx = eglcreatecontext(display->egl.dpy
-					    display->egl.conf
-					    egl-no-context context-attribs)
-	assert(display->egl.ctx)
-	display->swap-buffers-with-damage = null
-	extensions = eglquerystring(display->egl.dpy egl-extensions)
-	if (extensions &&
-		       weston-check-egl-extension(extensions "egl-ext-buffer-age")) (
-		       for (i = 0 i < (int) array-length(swap-damage-ext-to-entrypoint) i++) (
-											      if (weston-check-egl-extension(extensions
-															     swap-damage-ext-to-entrypoint[i].extension)) (
-																					   /* the extproc is identical to the khr one */
-																					   display->swap-buffers-with-damage =
-																					   (pfneglswapbufferswithdamageextproc)
-																					   eglgetprocaddress(swap-damage-ext-to-entrypoint[i].entrypoint)
-																					   break
-																					   )
-											      )
-		       )
-	if (display->swap-buffers-with-damage)
-	printf("has egl-ext-buffer-age and %s\n" swap-damage-ext-to-entrypoint[i].extension)
-	))
+;; 	display->egl.ctx = eglcreatecontext(display->egl.dpy
+;; 					    display->egl.conf
+;; 					    egl-no-context context-attribs)
+;; 	assert(display->egl.ctx)
+;; 	display->swap-buffers-with-damage = null
+;; 	extensions = eglquerystring(display->egl.dpy egl-extensions)
+;; 	if (extensions &&
+;; 		       weston-check-egl-extension(extensions "egl-ext-buffer-age")) (
+;; 		       for (i = 0 i < (int) array-length(swap-damage-ext-to-entrypoint) i++) (
+;; 											      if (weston-check-egl-extension(extensions
+;; 															     swap-damage-ext-to-entrypoint[i].extension)) (
+;; 																					   /* the extproc is identical to the khr one */
+;; 																					   display->swap-buffers-with-damage =
+;; 																					   (pfneglswapbufferswithdamageextproc)
+;; 																					   eglgetprocaddress(swap-damage-ext-to-entrypoint[i].entrypoint)
+;; 																					   break
+;; 																					   )
+;; 											      )
+;; 		       )
+;; 	if (display->swap-buffers-with-damage)
+;; 	printf("has egl-ext-buffer-age and %s\n" swap-damage-ext-to-entrypoint[i].extension)
+;; 	))

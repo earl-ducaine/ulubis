@@ -806,54 +806,53 @@ usage(int error_code)
 }
 
 int
-main(int argc, char **argv)
+app_main(int argc, char **argv, struct window* window_ptr,
+	 struct display* display_ptr)
 {
 	struct sigaction sigint;
-	struct display display = { 0 };
-	struct window  window  = { 0 };
 	int i, ret = 0;
 
-	window.display = &display;
-	display.window = &window;
-	window.geometry.width  = 250;
-	window.geometry.height = 250;
-	window.window_size = window.geometry;
-	window.buffer_size = 32;
-	window.frame_sync = 1;
-	window.delay = 0;
+	window_ptr->display = display_ptr;
+	display_ptr->window = window_ptr;
+	window_ptr->geometry.width  = 250;
+	window_ptr->geometry.height = 250;
+	window_ptr->window_size = window_ptr->geometry;
+	window_ptr->buffer_size = 32;
+	window_ptr->frame_sync = 1;
+	window_ptr->delay = 0;
 
 	for (i = 1; i < argc; i++) {
 		if (strcmp("-d", argv[i]) == 0 && i+1 < argc)
-			window.delay = atoi(argv[++i]);
+			window_ptr->delay = atoi(argv[++i]);
 		else if (strcmp("-f", argv[i]) == 0)
-			window.fullscreen = 1;
+			window_ptr->fullscreen = 1;
 		else if (strcmp("-o", argv[i]) == 0)
-			window.opaque = 1;
+			window_ptr->opaque = 1;
 		else if (strcmp("-s", argv[i]) == 0)
-			window.buffer_size = 16;
+			window_ptr->buffer_size = 16;
 		else if (strcmp("-b", argv[i]) == 0)
-			window.frame_sync = 0;
+			window_ptr->frame_sync = 0;
 		else if (strcmp("-h", argv[i]) == 0)
 			usage(EXIT_SUCCESS);
 		else
 			usage(EXIT_FAILURE);
 	}
 
-	display.display = wl_display_connect(NULL);
-	assert(display.display);
+	display_ptr->display = wl_display_connect(NULL);
+	assert(display_ptr->display);
 
-	display.registry = wl_display_get_registry(display.display);
-	wl_registry_add_listener(display.registry,
-				 &registry_listener, &display);
+	display_ptr->registry = wl_display_get_registry(display_ptr->display);
+	wl_registry_add_listener(display_ptr->registry,
+				 &registry_listener, display_ptr);
 
-	wl_display_roundtrip(display.display);
+	wl_display_roundtrip(display_ptr->display);
 
-	init_egl(&display, &window);
-	create_surface(&window);
-	init_gl(&window);
+	init_egl(display_ptr, window_ptr);
+	create_surface(window_ptr);
+	init_gl(window_ptr);
 
-	display.cursor_surface =
-		wl_compositor_create_surface(display.compositor);
+	display_ptr->cursor_surface =
+		wl_compositor_create_surface(display_ptr->compositor);
 
 	sigint.sa_handler = signal_int;
 	sigemptyset(&sigint.sa_mask);
@@ -865,32 +864,32 @@ main(int argc, char **argv)
 	 * wl_display_dispatch_pending() to handle any events that got
 	 * queued up as a side effect. */
 	while (running && ret != -1) {
-		if (window.wait_for_configure) {
-			ret = wl_display_dispatch(display.display);
+		if (window_ptr->wait_for_configure) {
+			ret = wl_display_dispatch(display_ptr->display);
 		} else {
-			ret = wl_display_dispatch_pending(display.display);
-			redraw(&window, NULL, 0);
+			ret = wl_display_dispatch_pending(display_ptr->display);
+			redraw(window_ptr, NULL, 0);
 		}
 	}
 
 	fprintf(stderr, "simple-egl exiting\n");
 
-	destroy_surface(&window);
-	fini_egl(&display);
+	destroy_surface(window_ptr);
+	fini_egl(display_ptr);
 
-	wl_surface_destroy(display.cursor_surface);
-	if (display.cursor_theme)
-		wl_cursor_theme_destroy(display.cursor_theme);
+	wl_surface_destroy(display_ptr->cursor_surface);
+	if (display_ptr->cursor_theme)
+		wl_cursor_theme_destroy(display_ptr->cursor_theme);
 
-	if (display.wm_base)
-		xdg_wm_base_destroy(display.wm_base);
+	if (display_ptr->wm_base)
+		xdg_wm_base_destroy(display_ptr->wm_base);
 
-	if (display.compositor)
-		wl_compositor_destroy(display.compositor);
+	if (display_ptr->compositor)
+		wl_compositor_destroy(display_ptr->compositor);
 
-	wl_registry_destroy(display.registry);
-	wl_display_flush(display.display);
-	wl_display_disconnect(display.display);
+	wl_registry_destroy(display_ptr->registry);
+	wl_display_flush(display_ptr->display);
+	wl_display_disconnect(display_ptr->display);
 
 	return 0;
 }
