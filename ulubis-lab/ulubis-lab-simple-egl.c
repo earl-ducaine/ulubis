@@ -450,7 +450,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 	EGLint buffer_age = 0;
 	struct timeval tv;
 
-	assert(window->callback == callback);
+	assert(!callback || (window->callback == callback));
 	window->callback = NULL;
 
 	if (callback)

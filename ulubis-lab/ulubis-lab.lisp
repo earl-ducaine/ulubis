@@ -37,7 +37,6 @@
 	"eglSwapBuffersWithDamageKHR" 1)))
     swap-damage-ext-to-entrypoint))
 
-
 (defcfun "app_main" :int
   (argc :int)
   (argv :pointer)
@@ -102,4 +101,4 @@
       ;; (format t "window_ptr->display = display_ptr -- ~s~%"
       ;; 	      (-> window-ptr 'display))
 
-      (app-main 0 (null-pointer) (sap window-ptr) (sap display-ptr)))))
+      (app-main 0 (null-pointer) window-ptr display-ptr))))
