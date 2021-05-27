@@ -67,9 +67,9 @@
   (with-slots (sap cffi-type) display-ptr
     (foreign-slot-value sap '(:struct display) slot)))
 
-(defmethod (setf ->) (value (display-ptr display) slot)
+(defmethod (setf ->) ((value cffi-pointer-wrapper) (display-ptr display) slot)
   (with-slots (sap cffi-type) display-ptr
-    (setf (foreign-slot-value sap cffi-type slot) value)))
+    (setf (foreign-slot-value sap cffi-type slot) (sap value))))
 
 (defun test-window-ptr ()
   (with-foreign-objects ((window-ptr-raw '(:struct window) 1))
@@ -88,7 +88,9 @@
 	  (display-ptr (make-instance 'display
 				      :sap display-sap
 				      :cffi-type '(:struct display))))
-      ;; (setf (-> window-ptr 'display) display-ptr)
+      (setf (-> window-ptr 'display) display-ptr
+	    (-> display-ptr 'window) window-ptr)
+
 
       ;; window_ptr->display = display_ptr;
       ;; display_ptr->window = window_ptr;
@@ -101,4 +103,4 @@
       ;; (format t "window_ptr->display = display_ptr -- ~s~%"
       ;; 	      (-> window-ptr 'display))
 
-      (app-main 0 (null-pointer) window-ptr display-ptr))))
+      (app-main 0 (null-pointer) (sap window-ptr) (sap display-ptr)))))

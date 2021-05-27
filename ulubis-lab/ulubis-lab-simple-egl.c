@@ -452,7 +452,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 
 	assert(!callback || (window->callback == callback));
 	window->callback = NULL;
-
+	printf("Made it here!!!\n");
 	if (callback)
 		wl_callback_destroy(callback);
 
@@ -812,8 +812,8 @@ app_main(int argc, char **argv, struct window* window_ptr,
 	struct sigaction sigint;
 	int i, ret = 0;
 
-	window_ptr->display = display_ptr;
-	display_ptr->window = window_ptr;
+	// window_ptr->display = display_ptr;
+	// display_ptr->window = window_ptr;
 	window_ptr->geometry.width  = 250;
 	window_ptr->geometry.height = 250;
 	window_ptr->window_size = window_ptr->geometry;
