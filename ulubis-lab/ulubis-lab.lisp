@@ -154,6 +154,7 @@
       ;; wl_registry_add_listener(display_ptr->registry,
       ;;  			 registry_listener_ptr, display_ptr);
       (wl-registry-add-listener (-> display-ptr 'registry) *egl-registry-listener* (sap display-ptr))
+
       (wl-display-roundtrip (-> display-ptr display))
       (app-main (sap window-ptr) (sap display-ptr) *egl-registry-listener*
 		*vert-shader-text* *frag-shader-text*))))
