@@ -8,6 +8,7 @@
   :defsystem-depends-on (:cffi-grovel)
   :serial t
   :components ((:file "package")
+	       (:file "simple-touch")
 	       (:file "ulubis-lab-utils")
 	       (:file "ulubis-lab-def")
 	       ;; (:cffi-wrapper-file "wrappers" :soname "libulubislab")

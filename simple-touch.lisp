@@ -1613,12 +1613,6 @@
                                 :pointer (null-pointer)
                                 :pointer surface))
 
-;; (wl-proxy-marshal wl-shell +wl-shell-get-shell-surface+
-;;                     :pointer *wl-shell-surface-interface*
-;;                     :pointer (null-pointer)
-;;                     :pointer surface))
-
-
 (defun set-touch-slot (touch-ptr &rest rest)
   (when (/= (mod (length rest) 2) 0)
     (error "Wrong number of arguments, rest(~d) should be even~%"

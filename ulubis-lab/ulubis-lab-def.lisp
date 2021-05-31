@@ -2,8 +2,41 @@
 (in-package :ulubis-lab)
 
 
-(defun str (&rest rest)
-  (apply #'concatenate 'string rest))
+(eval-when (:execute :load-toplevel :compile-toplevel)
+  (pushnew (directory-namestring
+	    (merge-pathnames
+	     (directory-namestring
+	      (asdf:system-source-directory :ulubis-lab))))
+	   *foreign-library-directories*
+	   :test #'string=))
+
+
+(eval-when (:execute :load-toplevel :compile-toplevel)
+  (define-foreign-library ulubis-lab-simple-egl
+    (t (:default
+	"libulubis-lab-simple-egl")))
+
+  (use-foreign-library ulubis-lab-simple-egl))
+
+
+;;; Pure CL
+
+(defconstant +wl-display-sync+ 0)
+(defconstant +wl-display-get-registry+ 1)
+
+(defconstant +wl-compositor-create-surface+ 0)
+
+(defconstant +wl-shell-get-shell-surface+ 0)
+
+(defconstant +wl-shell-surface-pong+ 0)
+(defconstant +wl-shell-surface-set-toplevel+ 3)
+(defconstant +wl-shell-surface-set-title+ 8)
+
+(defconstant +wl-shm-pool-create-buffer+ 0)
+(defconstant +wl-shm-pool-destroy+ 1)
+
+(defconstant +wl-shm-create-pool+ 0)
+
 
 ;; egl opaque pointers
 (defctype egldisplay :pointer)
@@ -103,8 +136,8 @@
 
 (defcstruct window
   (display :pointer)
-  (geometry :pointer)
-  (window-size :pointer)
+  (geometry (:struct geometry))
+  (window-size (:struct geometry))
   (gl (:struct gl))
   (benchmark-time :uint32)
   (frames :uint32)
@@ -163,191 +196,242 @@
   (extension :string)
   (entrypoint :string))
 
+;; struct wl_registry_listener {
+;; 	void (*global)(void *data,
+;; 		       struct wl_registry *wl_registry,
+;; 		       uint32_t name,
+;; 		       const char *interface,
+;; 		       uint32_t version);
+;; 	void (*global_remove)(void *data,
+;; 			      struct wl_registry *wl_registry,
+;; 			      uint32_t name);
+;; };
 
-;; static void
-;; init_egl(struct display *display, struct window *window)
+(defcstruct wl-registry-listener
+  (global :pointer)
+  (global-remove :pointer))
+
+
+(defcfun "app_main" :int
+  (window-ptr (:pointer (:struct window)))
+  (display-ptr (:pointer (:struct display)))
+  (registry-listener (:pointer (:struct wl-registry-listener)))
+  (vert-shader-text :string)
+  (frag-shader-text :string))
+
+
+;; WL_EXPORT int
+;; wl_proxy_add_listener(struct wl_proxy *proxy,
+;; 		      void (**implementation)(void), void *data)
+(defcfun "wl_proxy_add_listener" :int
+  (proxy :pointer)
+  (implementation :pointer)
+  (data :pointer))
+
+
+(defclass cffi-pointer-wrapper ()
+  ;; sap: system area pointer.
+  ((sap :accessor sap :initarg :sap)
+   (cffi-type :accessor cffi-type :initarg :cffi-type)))
+
+(defun aggregate-struct-slot-p (foreign-type slot)
+  (eql 'cffi::aggregate-struct-slot
+       ;; Undocumented function to get the slot object of a
+       ;; struct. The object is either a cffi::aggregate-struct-slot
+       ;; or cffi::simple-struct-slot.
+       (type-of (cffi::get-slot-info foreign-type slot))))
+
+(defun slot-foreign-type (foreign-type slot)
+  ;; Undocumented function to get foreign type of slot.
+  (cffi::slot-type (cffi::get-slot-info foreign-type slot)))
+
+(defmethod -> ((ptr cffi-pointer-wrapper) slot)
+  (with-slots (sap cffi-type) ptr
+    (let ((aggregate-struct-slot-p (aggregate-struct-slot-p cffi-type slot))
+	  (slot-foreign-type (slot-foreign-type cffi-type slot)))
+      (cond
+	((and aggregate-struct-slot-p
+	      (eql (car slot-foreign-type) :struct))
+	 ;; Slot is a C-style nested structure, we depend on the name of
+	 ;; the structure being the same as the name of the wrapper
+	 ;; class, e.g. (:struct window) and (defclass window (..) ...)
+	 ;;
+	 ;; TODO -- we shouldn't need to specify both the lisp class and
+	 ;; the foreign type.
+	 (make-instance (cadr slot-foreign-type)
+			:sap (foreign-slot-pointer sap cffi-type slot)
+			:cffi-type slot-foreign-type))
+	(t
+	 (foreign-slot-value sap cffi-type slot))))))
+
+(defmethod (setf ->) (value (ptr cffi-pointer-wrapper) slot)
+  (with-slots (sap cffi-type) ptr
+    (let ((aggregate-struct-slot-p (aggregate-struct-slot-p cffi-type slot))
+	  (slot-foreign-type (slot-foreign-type cffi-type slot))
+	  (slot-sap (foreign-slot-pointer sap cffi-type slot)))
+      (cond
+	((and aggregate-struct-slot-p
+	      (eql (car slot-foreign-type) :struct))
+	 (unless (typep value 'cffi-pointer-wrapper)
+	   (error  (str "the only vadid value for aggregate-struct-slots are "
+			"cffi-pointer-wrapper objeects. Instead an object of "
+			"type (~s) was used.~%") (type-of value)))
+	 ;; While convoluted, mem-aref retrieves the values of a C
+	 ;; struct as a p-list and also allows those values to be
+	 ;; setf-ed using a p-list, i.e. because slot-sap is a pointer
+	 ;; to an agregate structure slot within an existing
+	 ;; structure, it must be updated 'by value', not by providing
+	 ;; a pointer to a new C struct.
+	 (setf (mem-aref slot-sap slot-foreign-type 0)
+	       (mem-aref (sap value) slot-foreign-type 0)))
+	(t
+	 (setf (foreign-slot-value sap cffi-type slot) value))))))
+
+
+(define-foreign-type window-struct-type ()
+  ()
+  (:actual-type :pointer)
+  (:simple-parser window-struct))
+
+(define-foreign-type display-struct-type ()
+  ()
+  (:actual-type :pointer)
+  (:simple-parser display-struct))
+
+(define-foreign-type geometry-struct-type ()
+  ()
+  (:actual-type :pointer)
+  (:simple-parser geometry-struct))
+
+(defmethod translate-to-foreign ((value cffi-pointer-wrapper) type)
+  (sap value))
+
+(defmethod translate-from-foreign (value (type window-struct-type))
+  (make-instance 'window
+		 :sap value
+		 :cffi-type '(:struct window)))
+
+(defmethod translate-from-foreign (value (type display-struct-type))
+  (make-instance 'dispaly
+		 :sap value
+		 :cffi-type '(:struct display)))
+
+(defmethod translate-from-foreign (value (type geometry-struct-type))
+  (make-instance 'geometry
+		 :sap value
+		 :cffi-type '(:struct geometry)))
+
+
+(defclass window (cffi-pointer-wrapper)
+  ()
+  (:default-initargs :cffi-type '(struct window)))
+
+(defclass display (cffi-pointer-wrapper)
+  ()
+  (:default-initargs :cffi-type '(struct display)))
+
+(defclass geometry (cffi-pointer-wrapper)
+  ()
+  (:default-initargs :cffi-type '(struct geometry)))
+
+
+;; static inline void
+;; wl_surface_commit(struct wl_surface *wl_surface)
 ;; {
-;; 	static const struct {
-;; 		char *extension, *entrypoint;
-;; 	} swap_damage_ext_to_entrypoint[] = {
-;; 		{
-;; 			.extension = "EGL_EXT_swap_buffers_with_damage",
-;; 			.entrypoint = "eglSwapBuffersWithDamageEXT",
-;; 		},
-;; 		{
-;; 			.extension = "EGL_KHR_swap_buffers_with_damage",
-;; 			.entrypoint = "eglSwapBuffersWithDamageKHR",
-;; 		},
-;; 	};
-;; 	static const EGLint context_attribs[] = {
-;; 		EGL_CONTEXT_CLIENT_VERSION, 2,
-;; 		EGL_NONE
-;; 	};
-;; 	const char *extensions;
-;; 	EGLint config_attribs[] = {
-;; 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-;; 		EGL_RED_SIZE, 1,
-;; 		EGL_GREEN_SIZE, 1,
-;; 		EGL_BLUE_SIZE, 1,
-;; 		EGL_ALPHA_SIZE, 1,
-;; 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-;; 		EGL_NONE
-;; 	};
-;; 	EGLint major, minor, n, count, i, size;
-;; 	EGLConfig *configs;
-;; 	EGLBoolean ret;
-;; 	if (window->opaque || window->buffer_size == 16)
-;; 		config_attribs[9] = 0;
-;; 	display->egl.dpy =
-;; 		weston_platform_get_egl_display(EGL_PLATFORM_WAYLAND_KHR,
-;; 						display->display, NULL);
-;; 	assert(display->egl.dpy);
-;; 	ret = eglInitialize(display->egl.dpy, &major, &minor);
-;; 	assert(ret == EGL_TRUE);
-;; 	ret = eglBindAPI(EGL_OPENGL_ES_API);
-;; 	assert(ret == EGL_TRUE);
-;; 	if (!eglGetConfigs(display->egl.dpy, NULL, 0, &count) || count < 1)
-;; 		assert(0);
-;; 	configs = calloc(count, sizeof *configs);
-;; 	assert(configs);
-;; 	ret = eglChooseConfig(display->egl.dpy, config_attribs,
-;; 			      configs, count, &n);
-;; 	assert(ret && n >= 1);
-;; 	for (i = 0; i < n; i++) {
-;; 		eglGetConfigAttrib(display->egl.dpy,
-;; 				   configs[i], EGL_BUFFER_SIZE, &size);
-;; 		if (window->buffer_size == size) {
-;; 			display->egl.conf = configs[i];
-;; 			break;
-;; 		}
-;; 	}
-;; 	free(configs);
-;; 	if (display->egl.conf == NULL) {
-;; 		fprintf(stderr, "did not find config with buffer size %d\n",
-;; 			window->buffer_size);
-;; 		exit(EXIT_FAILURE);
-;; 	}
-;; 	display->egl.ctx = eglCreateContext(display->egl.dpy,
-;; 					    display->egl.conf,
-;; 					    EGL_NO_CONTEXT, context_attribs);
-;; 	assert(display->egl.ctx);
-;; 	display->swap_buffers_with_damage = NULL;
-;; 	extensions = eglQueryString(display->egl.dpy, EGL_EXTENSIONS);
-;; 	if (extensions &&
-;; 	    weston_check_egl_extension(extensions, "EGL_EXT_buffer_age")) {
-;; 		for (i = 0; i < (int) ARRAY_LENGTH(swap_damage_ext_to_entrypoint); i++) {
-;; 			if (weston_check_egl_extension(extensions,
-;; 						       swap_damage_ext_to_entrypoint[i].extension)) {
-;; 				/* The EXTPROC is identical to the KHR one */
-;; 				display->swap_buffers_with_damage =
-;; 					(PFNEGLSWAPBUFFERSWITHDAMAGEEXTPROC)
-;; 					eglGetProcAddress(swap_damage_ext_to_entrypoint[i].entrypoint);
-;; 				break;
-;; 			}
-;; 		}
-;; 	}
-;; 	if (display->swap_buffers_with_damage)
-;; 		printf("has EGL_EXT_buffer_age and %s\n", swap_damage_ext_to_entrypoint[i].extension);
+;; 	wl_proxy_marshal((struct wl_proxy *) wl_surface, WL_SURFACE_COMMIT);
 ;; }
 
+(defun wl-surface-commit (wl-surface)
+  (wl-proxy-marshal wl-surface +wl-surface-commit+))
 
-;; (defun (init-egl display-ptr window-ptr)
-;;   (let (extensions count i size configs-ptr ret
-;; 		   (context-attribs
-;; 		     (foreign-alloc
-;; 		      eglint
-;; 		      :count 3
-;; 		      :initial-contents '(egl-context-client-version 2 egl-none)))
-;; 		   (config-attribs
-;; 		     (foreign-alloc
-;; 		      eglint
-;; 		      :count 13
-;; 		      :initial-contents '(egl-surface-type egl-window-bit
-;; 					  egl-red-size 1 egl-green-size 1
-;; 					  egl-blue-size 1 egl-alpha-size 1
-;; 					  egl-renderable-type egl-opengl-es2-bit
-;; 					  egl-none))))
-;;     (with-foreign-objects ((major-ptr eglint)
-;; 			   (minor-ptr eglint)
-;; 			   (minor-ptr eglint)
-;; 			   (n eglint)
-;; 			   (configs (:struct eglconfig) :count count))
-;;       (with-foreign-slots ((opaque buffer-size) window-ptr
-;; 			   (:struct window))
-;; 	(when (or (/= opaque 0) (= buffer-size 16))
-;; 	  (setf (mem-aref config-attribs eglint 9) 0))
-;; 	(assert (/= (setf (foreign-slot-value
-;; 			   (foreign-slot-value display-ptr '(:struct display) 'egl)
-;; 			   '(:struct egl) 'dpy)
-;; 			  (weston-platform-get-egl-display
-;; 			   egl-platform-wayland-khr
-;; 			   (foreign-slot-value display-ptr '(:struct display) 'display)
-;; 			   (null-pointer)))
-;; 		    0))
-;; 	(assert (= (eglinitialize (foreign-slot-value
-;; 				   (foreign-slot-value display-ptr '(:struct display) 'egl)
-;; 				   '(:struct egl) 'dpy) major-ptr minor-ptr)
-;; 		   egl-true))
-;; 	(assert (= (eglbindapi egl-opengl-es-api) egl-true))
-;; 	(assert (and (/= (eglgetconfigs
-;; 			  (foreign-slot-value
-;; 			   (foreign-slot-value display-ptr '(:struct display) 'egl)
-;; 			   '(:struct egl) 'dpy)
-;; 			  (null-pointer) 0 count) 0)
-;; 		     (>= count 1)))
-;; 	(setf configs (foreign-alloc (:struct eglconfig) :count count))
-;; 	(assert (and (/= (eglchooseconfig
-;; 			  (foreign-slot-value
-;; 			   (foreign-slot-value display-ptr
-;; 					       '(:struct display) 'egl)
-;; 			   '(:struct egl) 'dpy)
-;; 			  config-attribs
-;; 			  configs
-;; 			  count) 0)
-;; 		     (>= n 1)))
-;; 	(dotimes (i n)
-;; 	  (eglgetconfigattrib (foreign-slot-value
-;; 			       (foreign-slot-value display-ptr
-;; 						   '(:struct display) 'egl)
-;; 			       '(:struct egl) 'dpy)
-;; 			      (mem-aptr configs eglconfig i)
-;; 			      egl-buffer-size size)
-;; 	  (when (= (foreign-slot-value window-ptr
-;; 				       '(:struct window) 'buffer-size)
-;; 		   size)
-;; 	    (setf (foreign-slot-value
-;; 		   (foreign-slot-value display-ptr
-;; 				       '(:struct display) 'egl)
-;; 		   '(:struct egl) 'conf)
-;; 		  (mem-aptr configs eglconfig i))
-;; 	    (return)))
-;; 	(when (null-pointer-p (foreign-slot-value
-;; 		   (foreign-slot-value display-ptr
-;; 				       '(:struct display) 'egl)
-;; 		   '(:struct egl) 'conf))
-;; 	  (error "did not find config with buffer size ~s~%"
-;; 		 (foreign-slot-value window-ptr
-;; 				     '(:struct window) 'buffer-size)))
 
-;; 	display->egl.ctx = eglcreatecontext(display->egl.dpy
-;; 					    display->egl.conf
-;; 					    egl-no-context context-attribs)
-;; 	assert(display->egl.ctx)
-;; 	display->swap-buffers-with-damage = null
-;; 	extensions = eglquerystring(display->egl.dpy egl-extensions)
-;; 	if (extensions &&
-;; 		       weston-check-egl-extension(extensions "egl-ext-buffer-age")) (
-;; 		       for (i = 0 i < (int) array-length(swap-damage-ext-to-entrypoint) i++) (
-;; 											      if (weston-check-egl-extension(extensions
-;; 															     swap-damage-ext-to-entrypoint[i].extension)) (
-;; 																					   /* the extproc is identical to the khr one */
-;; 																					   display->swap-buffers-with-damage =
-;; 																					   (pfneglswapbufferswithdamageextproc)
-;; 																					   eglgetprocaddress(swap-damage-ext-to-entrypoint[i].entrypoint)
-;; 																					   break
-;; 																					   )
-;; 											      )
-;; 		       )
-;; 	if (display->swap-buffers-with-damage)
-;; 	printf("has egl-ext-buffer-age and %s\n" swap-damage-ext-to-entrypoint[i].extension)
-;; 	))
+;; static inline void
+;; wl_surface_attach(struct wl_surface *wl_surface, struct wl_buffer *buffer,
+;;                          int32_t x, int32_t y)
+;; {
+;; 	wl_proxy_marshal((struct wl_proxy *) wl_surface,
+;; 			 WL_SURFACE_ATTACH, buffer, x, y);
+;; }
+
+(defun wl-surface-attach (wl-surface buffer x y)
+  (wl-proxy-marshal wl-surface +wl-surface-attach+ :pointer buffer :int32 x
+                    :int32 y))
+
+;; static inline void
+;; wl_surface_damage(struct wl_surface *wl_surface, int32_t x, int32_t y, int32_t
+;;                          width, int32_t height)
+;; {
+;; 	wl_proxy_marshal((struct wl_proxy *) wl_surface,
+;; 			 WL_SURFACE_DAMAGE, x, y, width, height);
+;; }
+
+(defun wl-surface-damage (wl-surface x y width height)
+  (wl-proxy-marshal wl-surface +wl-surface-damage+ :int32 x :int32 y
+                    :int32 width :int32 height ))
+
+
+;; static inline int
+;; wl_registry_add_listener(struct wl_registry *wl_registry,
+;; 			 const struct wl_registry_listener *listener, void *data)
+;; {
+;; 	return wl_proxy_add_listener((struct wl_proxy *) wl_registry,
+;; 				     (void (**)(void)) listener, data);
+;; }
+
+(defun wl-registry-add-listener (wl-registry listener data)
+  (wl-proxy-add-listener wl-registry listener data))
+
+;; static inline int
+;; wl_shm_add_listener(struct wl_shm *wl_shm,
+;; 		    const struct wl_shm_listener *listener, void *data)
+;; {
+;; 	return wl_proxy_add_listener((struct wl_proxy *) wl_shm,
+;; 				     (void (**)(void)) listener, data);
+;; }
+
+(defun wl-shm-add-listener (wl-shm listener data)
+  (wl-proxy-add-listener wl-shm listener data))
+
+
+;; static inline int
+;; wl_seat_add_listener(struct wl_seat *wl_seat,
+;; 		     const struct wl_seat_listener *listener, void *data)
+;; {
+;; 	return wl_proxy_add_listener((struct wl_proxy *) wl_seat,
+;; 				     (void (**)(void)) listener, data);
+;; }
+
+(defun wl-seat-add-listener (wl-shm listener data)
+  (wl-proxy-add-listener wl-shm listener data))
+
+
+;; static inline struct wl_registry *
+;; wl_display_get_registry(struct wl_display *wl_display)
+;; {
+;; 	struct wl_proxy *registry;
+;; 	registry = wl_proxy_marshal_constructor((struct wl_proxy *) wl_display,
+;; 			 WL_DISPLAY_GET_REGISTRY, &wl_registry_interface, NULL);
+;; 	return (struct wl_registry *) registry;
+;; }
+
+(defun wl-display-get-registry (wl-display)
+  (wl-proxy-marshal-constructor
+   wl-display +wl-display-get-registry+ *wl-registry-interface*
+   :pointer (null-pointer)))
+
+;; static inline struct wl_shell_surface *
+;; wl_shell_get_shell_surface(struct wl_shell *wl_shell, struct wl_surface *surface)
+;; {
+;; 	struct wl_proxy *id;
+;; 	id = wl_proxy_marshal_constructor((struct wl_proxy *) wl_shell,
+;; 			 WL_SHELL_GET_SHELL_SURFACE,
+;;                                           &wl_shell_surface_interface,
+;;                                           NULL, surface);
+;; 	return (struct wl_shell_surface *) id;
+;; }
+
+(defun wl-shell-get-shell-surface (wl-shell surface)
+  (wl-proxy-marshal-constructor wl-shell +wl-shell-get-shell-surface+
+                                *wl-shell-surface-interface*
+                                :pointer (null-pointer)
+                                :pointer surface))

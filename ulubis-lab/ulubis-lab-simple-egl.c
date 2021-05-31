@@ -100,22 +100,8 @@ struct window {
 	bool wait_for_configure;
 };
 
-static const char *vert_shader_text =
-	"uniform mat4 rotation;\n"
-	"attribute vec4 pos;\n"
-	"attribute vec4 color;\n"
-	"varying vec4 v_color;\n"
-	"void main() {\n"
-	"  gl_Position = rotation * pos;\n"
-	"  v_color = color;\n"
-	"}\n";
-
-static const char *frag_shader_text =
-	"precision mediump float;\n"
-	"varying vec4 v_color;\n"
-	"void main() {\n"
-	"  gl_FragColor = v_color;\n"
-	"}\n";
+char *vert_shader_text;
+char *frag_shader_text;
 
 static int running = 1;
 
@@ -452,7 +438,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 
 	assert(!callback || (window->callback == callback));
 	window->callback = NULL;
-	printf("Made it here!!!\n");
+
 	if (callback)
 		wl_callback_destroy(callback);
 
@@ -738,9 +724,9 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 	xdg_wm_base_ping,
 };
 
-static void
-registry_handle_global(void *data, struct wl_registry *registry,
-		       uint32_t name, const char *interface, uint32_t version)
+void registry_handle_global(void *data, struct wl_registry *registry,
+			    uint32_t name, const char *interface,
+			    uint32_t version)
 {
 	struct display *d = data;
 
@@ -774,16 +760,6 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	}
 }
 
-static void
-registry_handle_global_remove(void *data, struct wl_registry *registry,
-			      uint32_t name)
-{
-}
-
-static const struct wl_registry_listener registry_listener = {
-	registry_handle_global,
-	registry_handle_global_remove
-};
 
 static void
 signal_int(int signum)
@@ -791,59 +767,18 @@ signal_int(int signum)
 	running = 0;
 }
 
-static void
-usage(int error_code)
-{
-	fprintf(stderr, "Usage: simple-egl [OPTIONS]\n\n"
-		"  -d <us>\tBuffer swap delay in microseconds\n"
-		"  -f\tRun in fullscreen mode\n"
-		"  -o\tCreate an opaque surface\n"
-		"  -s\tUse a 16 bpp EGL config\n"
-		"  -b\tDon't sync to compositor redraw (eglSwapInterval 0)\n"
-		"  -h\tThis help text\n\n");
-
-	exit(error_code);
-}
-
-int
-app_main(int argc, char **argv, struct window* window_ptr,
-	 struct display* display_ptr)
+int app_main(struct window* window_ptr, struct display* display_ptr,
+	     const struct wl_registry_listener *registry_listener_ptr,
+	     char *vert_shader_text_in, char *frag_shader_text_in)
 {
 	struct sigaction sigint;
-	int i, ret = 0;
+	int ret = 0;
 
-	// window_ptr->display = display_ptr;
-	// display_ptr->window = window_ptr;
-	window_ptr->geometry.width  = 250;
-	window_ptr->geometry.height = 250;
-	window_ptr->window_size = window_ptr->geometry;
-	window_ptr->buffer_size = 32;
-	window_ptr->frame_sync = 1;
-	window_ptr->delay = 0;
+	vert_shader_text = vert_shader_text_in;
+	frag_shader_text = frag_shader_text_in;
 
-	for (i = 1; i < argc; i++) {
-		if (strcmp("-d", argv[i]) == 0 && i+1 < argc)
-			window_ptr->delay = atoi(argv[++i]);
-		else if (strcmp("-f", argv[i]) == 0)
-			window_ptr->fullscreen = 1;
-		else if (strcmp("-o", argv[i]) == 0)
-			window_ptr->opaque = 1;
-		else if (strcmp("-s", argv[i]) == 0)
-			window_ptr->buffer_size = 16;
-		else if (strcmp("-b", argv[i]) == 0)
-			window_ptr->frame_sync = 0;
-		else if (strcmp("-h", argv[i]) == 0)
-			usage(EXIT_SUCCESS);
-		else
-			usage(EXIT_FAILURE);
-	}
-
-	display_ptr->display = wl_display_connect(NULL);
-	assert(display_ptr->display);
-
-	display_ptr->registry = wl_display_get_registry(display_ptr->display);
 	wl_registry_add_listener(display_ptr->registry,
-				 &registry_listener, display_ptr);
+				 registry_listener_ptr, display_ptr);
 
 	wl_display_roundtrip(display_ptr->display);
 
