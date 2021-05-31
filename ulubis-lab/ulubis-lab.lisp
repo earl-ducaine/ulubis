@@ -43,17 +43,32 @@
   (interface :string)
   (version :uint32))
 
+;; static void
+;; init_egl(struct display *display, struct window *window)
+
+(defcfun "init_egl" :void
+  (display (:pointer (:struct display)))
+  (window (:pointer (:struct window))))
+
+;; void create_surface(struct window *window)
+(defcfun "create_surface" :void
+  (window (:pointer (:struct window))))
+
+
+;; void init_gl(struct window *window)
+(defcfun "init_gl" :void
+  (window (:pointer (:struct window))))
+
+
 ;; void registry_handle_global(void *data, struct wl_registry *registry,
 ;; 			    uint32_t name, const char *interface,
 ;; 			    uint32_t version);
-
 (defcallback registry-handle-global :void
     ((data :pointer)
      (registry :pointer)
      (name :uint32)
      (interface :string)
      (version :uint32))
-
   (registry-handle-global data registry name interface version))
 
 
@@ -118,6 +133,15 @@
 		   "void main() {~%"
 		   "  gl_FragColor = v_color;~%"
 		   "}~%")))
+;; struct wl_surface *
+;; wl_compositor_create_surface_alt(struct wl_compositor *wl_compositor)
+(defcfun "wl_compositor_create_surface_alt" :pointer
+  (wl-compositor :pointer))
+
+;; void set_display_cursor_surface(struct display* display_ptr, struct wl_surface * wl_surface_ptr)
+(defcfun "set_display_cursor_surface" :void
+  (dispaly-ptr :pointer)
+  (wl-surface-ptr :pointer))
 
 (defun run-ulubis-lab (&key (delay 0) (opaque 0) (buffer-size 32)
 			 (frame-sync 1) usage (fullscreen 0))
@@ -151,10 +175,16 @@
 	    (-> display-ptr 'display) (wl-display-connect (null-pointer))
 	    (-> display-ptr 'registry) (wl-display-get-registry
 					(-> display-ptr 'display)))
-      ;; wl_registry_add_listener(display_ptr->registry,
-      ;;  			 registry_listener_ptr, display_ptr);
       (wl-registry-add-listener (-> display-ptr 'registry) *egl-registry-listener* (sap display-ptr))
-
-      (wl-display-roundtrip (-> display-ptr display))
+      (init-egl (sap display-ptr) (sap window-ptr))
+      (wl-display-roundtrip (-> display-ptr 'display))
+      (setf (mem-ref (foreign-symbol-pointer "vert_shader_text") :string)
+	    *vert-shader-text*)
+      (setf (mem-ref (foreign-symbol-pointer "frag_shader_text") :string)
+	    *frag-shader-text*)
+      (create-surface (sap window-ptr))
+      (init-gl (sap window-ptr))
+      (set-display-cursor-surface (sap display-ptr)
+				  (wl-compositor-create-surface (-> display-ptr 'compositor)))
       (app-main (sap window-ptr) (sap display-ptr) *egl-registry-listener*
-		*vert-shader-text* *frag-shader-text*))))
+      		*vert-shader-text* *frag-shader-text* (null-pointer)))))

@@ -105,8 +105,7 @@ char *frag_shader_text;
 
 static int running = 1;
 
-static void
-init_egl(struct display *display, struct window *window)
+void init_egl(struct display *display, struct window *window)
 {
 	static const struct {
 		char *extension, *entrypoint;
@@ -238,8 +237,7 @@ create_shader(struct window *window, const char *source, GLenum shader_type)
 	return shader;
 }
 
-static void
-init_gl(struct window *window)
+void init_gl(struct window *window)
 {
 	GLuint frag, vert;
 	GLuint program;
@@ -248,11 +246,12 @@ init_gl(struct window *window)
 	frag = create_shader(window, frag_shader_text, GL_FRAGMENT_SHADER);
 	vert = create_shader(window, vert_shader_text, GL_VERTEX_SHADER);
 
+	printf("made it here\n");
+
 	program = glCreateProgram();
 	glAttachShader(program, frag);
 	glAttachShader(program, vert);
 	glLinkProgram(program);
-
 	glGetProgramiv(program, GL_LINK_STATUS, &status);
 	if (!status) {
 		char log[1000];
@@ -340,8 +339,7 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 	handle_toplevel_close,
 };
 
-static void
-create_surface(struct window *window)
+void create_surface(struct window *window)
 {
 	struct display *display = window->display;
 	EGLBoolean ret;
@@ -761,38 +759,19 @@ void registry_handle_global(void *data, struct wl_registry *registry,
 }
 
 
-static void
-signal_int(int signum)
+void set_display_cursor_surface(struct display* display_ptr, struct wl_surface * wl_surface_ptr)
 {
-	running = 0;
+	display_ptr->cursor_surface = wl_surface_ptr;
 }
+
 
 int app_main(struct window* window_ptr, struct display* display_ptr,
 	     const struct wl_registry_listener *registry_listener_ptr,
-	     char *vert_shader_text_in, char *frag_shader_text_in)
+	     char *vert_shader_text_in, char *frag_shader_text_in, struct wl_surface * wl_surface_ptr)
 {
 	struct sigaction sigint;
 	int ret = 0;
 
-	vert_shader_text = vert_shader_text_in;
-	frag_shader_text = frag_shader_text_in;
-
-	wl_registry_add_listener(display_ptr->registry,
-				 registry_listener_ptr, display_ptr);
-
-	wl_display_roundtrip(display_ptr->display);
-
-	init_egl(display_ptr, window_ptr);
-	create_surface(window_ptr);
-	init_gl(window_ptr);
-
-	display_ptr->cursor_surface =
-		wl_compositor_create_surface(display_ptr->compositor);
-
-	sigint.sa_handler = signal_int;
-	sigemptyset(&sigint.sa_mask);
-	sigint.sa_flags = SA_RESETHAND;
-	sigaction(SIGINT, &sigint, NULL);
 
 	/* The mainloop here is a little subtle.  Redrawing will cause
 	 * EGL to read events so we can just call

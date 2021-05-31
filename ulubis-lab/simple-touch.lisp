@@ -1293,7 +1293,6 @@
 (defcfun "wl_display_dispatch" :int
   (display wl-display-pointer))
 
-
 ;; WL_EXPORT int
 ;; wl_display_roundtrip(struct wl_display *display)
 (defcfun "wl_display_roundtrip" :int

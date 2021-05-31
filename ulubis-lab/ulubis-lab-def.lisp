@@ -217,7 +217,8 @@
   (display-ptr (:pointer (:struct display)))
   (registry-listener (:pointer (:struct wl-registry-listener)))
   (vert-shader-text :string)
-  (frag-shader-text :string))
+  (frag-shader-text :string)
+  (wl-surface-ptr :pointer))
 
 
 ;; WL_EXPORT int
@@ -227,6 +228,12 @@
   (proxy :pointer)
   (implementation :pointer)
   (data :pointer))
+
+
+;; WL_EXPORT int
+;; wl_display_roundtrip(struct wl_display *display)
+(defcfun "wl_display_roundtrip" :int
+  (display :pointer))
 
 
 (defclass cffi-pointer-wrapper ()
@@ -429,9 +436,21 @@
 ;;                                           NULL, surface);
 ;; 	return (struct wl_shell_surface *) id;
 ;; }
-
 (defun wl-shell-get-shell-surface (wl-shell surface)
   (wl-proxy-marshal-constructor wl-shell +wl-shell-get-shell-surface+
                                 *wl-shell-surface-interface*
                                 :pointer (null-pointer)
                                 :pointer surface))
+
+
+;; static inline struct wl_surface *
+;; wl_compositor_create_surface(struct wl_compositor *wl_compositor)
+;; {
+;; 	struct wl_proxy *id;
+;; 	id = wl_proxy_marshal_constructor((struct wl_proxy *) wl_compositor,
+;; 			 WL_COMPOSITOR_CREATE_SURFACE, &wl_surface_interface, NULL);
+;; 	return (struct wl_surface *) id;
+;; }
+(defun wl-compositor-create-surface (wl-compositor)
+  (wl-proxy-marshal-constructor wl-compositor +wl-compositor-create-surface+
+                                *wl-surface-interface* :pointer (null-pointer)))
