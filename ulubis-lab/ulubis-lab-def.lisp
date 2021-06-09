@@ -218,7 +218,8 @@
   (registry-listener (:pointer (:struct wl-registry-listener)))
   (vert-shader-text :string)
   (frag-shader-text :string)
-  (wl-surface-ptr :pointer))
+  (wl-surface-ptr :pointer)
+  (running (:pointer :int)))
 
 
 ;; WL_EXPORT int
@@ -235,6 +236,15 @@
 (defcfun "wl_display_roundtrip" :int
   (display :pointer))
 
+;; int
+;; wl_display_dispatch(struct wl_display *display);
+(defcfun "wl_display_dispatch" :int
+  (display (:pointer (:struct display))))
+
+;; int
+;; wl_display_dispatch_pending(struct wl_display *display);
+(defcfun "wl_display_dispatch_pending" :int
+  (display (:pointer (:struct display))))
 
 (defclass cffi-pointer-wrapper ()
   ;; sap: system area pointer.

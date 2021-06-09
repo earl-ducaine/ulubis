@@ -5,3 +5,4 @@ ulubis.sdl
 *.so
 os-compatibility-test
 a.out
+*.o

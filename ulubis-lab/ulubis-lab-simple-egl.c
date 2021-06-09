@@ -103,7 +103,7 @@ struct window {
 char *vert_shader_text;
 char *frag_shader_text;
 
-static int running = 1;
+int *running;
 
 void init_egl(struct display *display, struct window *window)
 {
@@ -331,7 +331,7 @@ handle_toplevel_configure(void *data, struct xdg_toplevel *toplevel,
 static void
 handle_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel)
 {
-	running = 0;
+	*running = 0;
 }
 
 static const struct xdg_toplevel_listener xdg_toplevel_listener = {
@@ -406,17 +406,23 @@ destroy_surface(struct window *window)
 		wl_callback_destroy(window->callback);
 }
 
-static void
+void
 redraw(void *data, struct wl_callback *callback, uint32_t time)
 {
 	struct window *window = data;
 	struct display *display = window->display;
-	static const GLfloat verts[3][2] = {
-		{ -0.5, -0.5 },
-		{  0.5, -0.5 },
-		{  0,    0.5 }
+	static const GLfloat verts[6][2] = {
+		{ -0.2, -0.5 },
+		{  0.3, -0.5 },
+		{  0.05, 0.5 },
+		{ -0.3, -0.5 },
+		{  0.2, -0.5 },
+		{ -0.05, 0.5 }
 	};
-	static const GLfloat colors[3][3] = {
+	static const GLfloat colors[6][3] = {
+		{ 1, 0, 0 },
+		{ 0, 1, 0 },
+		{ 0, 0, 1 },
 		{ 1, 0, 0 },
 		{ 0, 1, 0 },
 		{ 0, 0, 1 }
@@ -476,7 +482,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 	glEnableVertexAttribArray(window->gl.pos);
 	glEnableVertexAttribArray(window->gl.col);
 
-	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	glDisableVertexAttribArray(window->gl.pos);
 	glDisableVertexAttribArray(window->gl.col);
@@ -657,7 +663,7 @@ keyboard_handle_key(void *data, struct wl_keyboard *keyboard,
 		else
 			xdg_toplevel_set_fullscreen(d->window->xdg_toplevel, NULL);
 	} else if (key == KEY_ESC && state)
-		running = 0;
+		*running = 0;
 }
 
 static void
@@ -765,26 +771,35 @@ void set_display_cursor_surface(struct display* display_ptr, struct wl_surface *
 }
 
 
+// bool inner_loop (struct window* window_ptr, struct display* display_ptr)
+// {
+// 	int ret;
+// 	if (window_ptr->wait_for_configure) {
+// 		ret = wl_display_dispatch(display_ptr->display);
+// 	} else {
+// 		ret = wl_display_dispatch_pending(display_ptr->display);
+// 		redraw(window_ptr, NULL, 0);
+// 	}
+// 	return *running && ret != -1;
+
+// }
+
 int app_main(struct window* window_ptr, struct display* display_ptr,
 	     const struct wl_registry_listener *registry_listener_ptr,
-	     char *vert_shader_text_in, char *frag_shader_text_in, struct wl_surface * wl_surface_ptr)
+	     char *vert_shader_text_in, char *frag_shader_text_in,
+	     struct wl_surface * wl_surface_ptr, int *running_ptr)
 {
 	struct sigaction sigint;
-	int ret = 0;
+	//int ret = 0;
+	running = running_ptr;
+	*running = 1;
 
 
 	/* The mainloop here is a little subtle.  Redrawing will cause
 	 * EGL to read events so we can just call
 	 * wl_display_dispatch_pending() to handle any events that got
 	 * queued up as a side effect. */
-	while (running && ret != -1) {
-		if (window_ptr->wait_for_configure) {
-			ret = wl_display_dispatch(display_ptr->display);
-		} else {
-			ret = wl_display_dispatch_pending(display_ptr->display);
-			redraw(window_ptr, NULL, 0);
-		}
-	}
+	// while (inner_loop(window_ptr, display_ptr)) {}
 
 	fprintf(stderr, "simple-egl exiting\n");
 

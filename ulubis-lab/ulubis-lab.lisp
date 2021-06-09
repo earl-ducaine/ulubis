@@ -143,10 +143,26 @@
   (dispaly-ptr :pointer)
   (wl-surface-ptr :pointer))
 
+
+;; int inner_loop (struct window* window_ptr, struct display* display_ptr)
+(defcfun "inner_loop" :int
+  (window-ptr :pointer)
+  (display-ptr :pointer))
+
+
+
+;; void
+;; redraw(void *data, struct wl_callback *callback, uint32_t time)
+(defcfun "redraw" :void
+  (window-ptr :pointer)
+  (display-ptr :pointer)
+  (time :uint32))
+
 (defun run-ulubis-lab (&key (delay 0) (opaque 0) (buffer-size 32)
 			 (frame-sync 1) usage (fullscreen 0))
   (with-foreign-objects ((window-sap '(:struct window) 1)
-			 (display-sap '(:struct display) 1))
+			 (display-sap '(:struct display) 1)
+			 (running-sap :int 1))
     (let ((window-ptr (make-instance 'window
 				     :sap window-sap
 				     :cffi-type '(:struct window)))
@@ -186,5 +202,14 @@
       (init-gl (sap window-ptr))
       (set-display-cursor-surface (sap display-ptr)
 				  (wl-compositor-create-surface (-> display-ptr 'compositor)))
-      (app-main (sap window-ptr) (sap display-ptr) *egl-registry-listener*
-      		*vert-shader-text* *frag-shader-text* (null-pointer)))))
+
+      (setf (mem-aref running-sap :int 0) 1)
+      (do ()
+	  ((not (progn
+		  (cond
+		    ((-> window-ptr 'wait-for-configure)
+		     (wl-display-dispatch (-> display-ptr 'display)))
+		    (t
+		     (let ((ret (wl-display-dispatch-pending (-> display-ptr 'display))))
+		       (redraw (sap window-ptr) (null-pointer) 0)
+		       ret))))))))))
